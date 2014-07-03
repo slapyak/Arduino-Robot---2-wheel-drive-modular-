@@ -33,7 +33,7 @@ int arbiter = 0;		//holds the arbitration decision
 int speed = 80;       	//speed in PWM format [0 - 255]
 
 /*--- intitialize ---*/
-Robot robo(1);    //start the Robot, with Serial debugging ON
+Robot robo;    //start the Robot, with Serial debugging ON
                   //refer to Robot class definition for capabilities and code
 
 /* --------------------------------------------------------------------
