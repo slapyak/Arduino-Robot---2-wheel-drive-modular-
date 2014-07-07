@@ -60,11 +60,8 @@ void setup() {
 void loop(){
   static int status = 0;
   switch (mode) {
-    case 0: //calibrate
-      //figure out how wide the hall is
-      float hall_width = calibrateWidth();
-      //set the setPoint for the centerline
-      setPoint = hall_width/2*1.41421;
+    case 0: //calibrate & initialize
+      setPoint = 0;
       //tell the others to get redy (turn on lights?)
       //have the Robot start
       mode = 1;
@@ -93,68 +90,35 @@ void loop(){
  * esitmates hall width based on sensor readings
  * returns the width in meters
  */
-float calibrateWidth(){
-  float low_left  = 1000;    //lowest reading from the left sensor
-  float low_right = 1000;    //lowest reading from the right sensor  
-  float return_dest;
-  //read the front 45-degree sensors
-  //turn ccw until the right sensor reading goes to minimum and starts to go back up.
-  return_dest = robo.IRdistance(irPinR)
-  low_right = turn_until(irPinR, -1);
-  //rotate back to center - should be 90 degrees ccw
-  return_dest = turn_until(irPinR, return_dest);
-  //turn cw until the left reading bottoms out
-  low_left = turn_until(irPinL, -1);
-  //turn the robot to a straight facing position 
-  return_dest = low_left * 1.41421; //1.41421 = l/cos(45)
-  return_dest = turn_until(irPinL, return_dest);
-  //return the sum of those two readings as the hallway width
-  float width = low_right + low_left + 22.8;  //each sensor is 11.4 cm from the center
-}
-
-float turn_until(int sensorPin, float stop_reading){
-  float last_reading = 1000; //last reading recieved
-  float current_reading = 1000;        //current reading of interest
-
-  do {
-    robo.turn(-1);
-
-    if (stopReading == -1)
-      last_reading = current_reading;
-    else
-      last_reading = stop_reading;
-
-    current_reading = robo.IRdistance(sensorPin);
-
-    if (current_reading < low_reading)
-      low_reading = current_reading;
-    if (DB) {
-      Serial.print("last: ");   Serial.print(last_reading);
-      Serial.print("\tcurr: "); Serial.print(current_reading);
-      Serial.print("\tlow: ");  Serial.println(low_reading);
-    }
-  } while(current_reading <= last_reading);
-  return low_reading;
- }
 
 int centerLine(){
   const  int   numReadings
-  static float readings_l[numReadings]={0,0,0,0,0};
+  const  int   MaxErr = 100; //the highest error value expected
+  static float readings_l[numReadings];
   static float average_l = 0;
   static float sum_l = 0;
-  static float readings_r[numReadings]={0,0,0,0,0};
+  static float readings_r[numReadings];
   static float average_r = 0;
   static float sum_r = 0;
   static float last_reading = 0;
   static int   pointer = 0;
+  static int   first_call = 1; //to initialize the static arrays
 
-  //
+  //initialize the arrays
+  if (first_call = 1) {
+    for (int i = 0; i < num; ++i)  {
+      readings_l[i] = 0;
+      readings_r[i] = 0;
+    }
+    first_call = 0;
+  }
+  //update sum
   sum_l -= readings_l[pointer];
   sum_r -= readings_r[pointer];
   //get sensor readings
   readings_l[pointer] = robo.IRdistance(irPinL);
   readings_r[pointer] = robo.IRdistance(irPinR);
-  //
+  //update sum
   sum_l += readings_l[pointer];
   sum_r += readings_r[pointer];
 
@@ -169,8 +133,11 @@ int centerLine(){
   average_l = sum_l/numReadings;
   average_r = sum_r/numReadings;
   //turn according to the average
-  int error = average_r - average_l;
-  diff = map(error, -setPoint*2, setPoint*2, -20, 20);
+  int error = average_l - average_r;
+  diff = PIDcalculate(error); //negative values mean too far right, turn left
+  diff = min(diff, MaxErr); //limits error to max expected value
+  diff = max(diff, -MaxErr);//limits error to min expected value
+  diff = map(error, -MaxErr, MaxErr, -20, 20);
   robo.drive_dif(diff);
   return 0; //all systems normal
 }
@@ -217,3 +184,47 @@ void serialCommand(char ch){
     Serial.println(" : unrecognized command");
   }
  }
+
+int PIDcalculate(distance){
+  //setup & tuning variables, 
+  //below are for 300 RPM motors at 80/255 speed setting.
+  const float Ku = 8.25;
+  const float Tu = 3400;
+  const float Kp = Ku*0.45;
+  const float Ki = Kp*2/Tu;
+  const float Kd = Kp*Tu/3;
+  //terms used each time
+  static float lastError = 0;  //the value of the last error - stored between function calls
+  static float errorSum = 0;   //sum of all errors - stored between calls
+  static float dError = 0;         //change in error between this and last function call
+  static unsigned long lastTime = 0;  //last time the function was called
+  unsigned long now = millis(); //current time in milliseconds 
+  float timeChange = (now - lastTime);  //self explanitory?
+  float error;                 //current error
+  float Pterm;                 //proportional term
+  float Iterm;                 //integral term
+  float Dterm;                 //derivative term
+  int output;
+  //Use PID function from Lab #6
+  error = (float)(setPoint - distance);
+  errorSum += (error*timeChange);       
+  dError = (error - lastError)/timeChange;
+  Pterm = (Kp*error);
+  Iterm = (Ki*errorSum);
+  Dterm = (Kd*dError);
+  output = (Pterm + Iterm + Dterm);
+  //
+  lastError = error;
+  lastTime = now;
+  //
+  if(LOG){ 
+    Serial.print(" \t"); Serial.print(error);
+    Serial.print(" \t"); Serial.print(Pterm);
+    Serial.print(" \t"); Serial.print(Iterm);
+    Serial.print(" \t"); Serial.print(Dterm);
+    Serial.print(" \t"); Serial.print(output);
+    Serial.print(" \t"); Serial.print(now); 
+  }
+  //
+  return (output);
+}
