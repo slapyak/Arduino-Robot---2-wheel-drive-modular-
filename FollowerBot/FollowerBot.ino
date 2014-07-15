@@ -5,6 +5,7 @@
 #include <Robot.h>
 #define LOG 0 
 #define DB  1
+#define RPM (9.6/12*300) //RPM rating of current bot at operating voltage
 
 /*--- function declarations ---*/
 void serialEvent();
@@ -57,6 +58,106 @@ void setup() {
 
 void loop(){
 	//do stuff
+  switch(mode){
+    case 0: //stop mode - take no action
+      break;
+    case 1: //standard follower mode
+      follower(); //call the follower function
+      break;
+    case 2:
+      break;
+    default:
+      Serial.println("shouldn't be here... Invalid Mode Selection")
+  }
+}
+
+void follower(){
+  int diff = 0; //variable to hold the differential turning 
+  static int threshold = 750; //the minimum light level we will consider
+  static int MaxTurn = 30;    //the maximum differential we wish to use
+  static int MaxReading = 250;//the maximum delta between light sensor readings expected
+  static int MaxSpeed = RPM*0.7;
+  static int MinSpeed = RPM*0.3;
+  //get Cds Sensor data
+  int leftSens  = analogRead(CdsPin1);
+  int rightSens = analogRead(CdsPin2);
+  //set differential turning
+  //..if at least one sensor is over the threshold
+  if (leftSens > threshold || rightSens > threshold){
+    //we know we found the bot in front,
+    //so turn toward it, 
+    //the higher reading indicates the direction the bot ahead is in
+    //the difference in the two sensors is a rough indication of how far in that direction
+    //negative differentials will turn left, positive to the right
+    diff = rightSens - leftSens;  //find the difference
+    diff = max(-MaxReading, diff);  //set a floor for the sensor differnce
+    diff = min(MaxReading, diff);   //set a ceiling
+    diff = map(diff, -MaxReading, MaxReading, -MaxTurn, MaxTurn); //map to the differential
+  }
+  //get front sensor data - distance returned as float, cast to int and *1000
+  int leftIR  = robo.IRdistance_i(irPinF);
+  int rightIR = robo.IRdistance_i(irPinR);
+  //do some math to figure out where the bot is
+    //need to check both, reject anything with too big of a difference
+    //we could also use these readings to determine if we are pointed at the bot ahead properly
+    //instead of the above section
+  //calculate PID for distance with error above
+  correction = PIDcalc(distance);
+    //too close will give a negative value, we want to add that to the current speed
+    //too far will give a positive value, we want to add that to the current speed
+    //then we need to set a floor and ceiling for how fast the bot can go
+  speed = speed + error
+  speed = max(MinSpeed, speed);
+  speed = min(MaxSpeed, speed);
+  //determine if we need to speed up or slow down
+  //have the bot drive in the direction and speed necessary
+  robo.setSpeed(speed);
+  robo.drive_dif(diff);
+}
+
+int PIDcalc(distance){
+  static int setPoint = 500; //distance to the bot in front in mm
+  //setup & tuning variables, 
+  //below are for 300 RPM motors at 80/255 speed setting.
+  const float Ku = 8.25;
+  const float Tu = 3400;
+  const float Kp = Ku*0.45;
+  const float Ki = Kp*2/Tu;
+  const float Kd = Kp*Tu/3;
+  //terms used each time
+  static float lastError = 0;  //the value of the last error - stored between function calls
+  static float errorSum = 0;   //sum of all errors - stored between calls
+  static float dError = 0;         //change in error between this and last function call
+  static unsigned long lastTime = 0;  //last time the function was called
+  unsigned long now = millis(); //current time in milliseconds 
+  float timeChange = (now - lastTime);  //self explanitory?
+  float error;                 //current error
+  float Pterm;                 //proportional term
+  float Iterm;                 //integral term
+  float Dterm;                 //derivative term
+  int output;
+  //Use PID function from Lab #6
+  error = (float)(setPoint - distance);
+  errorSum += (error*timeChange);       
+  dError = (error - lastError)/timeChange;
+  Pterm = (Kp*error);
+  Iterm = (Ki*errorSum);
+  Dterm = (Kd*dError);
+  output = (Pterm + Iterm + Dterm);
+  //
+  lastError = error;
+  lastTime = now;
+  //
+  if(LOG){ 
+    Serial.print(" \t"); Serial.print(error);
+    Serial.print(" \t"); Serial.print(Pterm);
+    Serial.print(" \t"); Serial.print(Iterm);
+    Serial.print(" \t"); Serial.print(Dterm);
+    Serial.print(" \t"); Serial.print(output);
+    Serial.print(" \t"); Serial.print(now); 
+  }
+  //
+  return (int)output;
 }
 
 /* --------------- SerialEvent ---------------
