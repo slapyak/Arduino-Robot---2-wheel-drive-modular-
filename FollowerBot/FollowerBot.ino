@@ -10,13 +10,15 @@
 /*--- function declarations ---*/
 void serialEvent();
 void serialCommand(char ch);
+int PIDcalc(int distance);
 
 /*--- sensor pins ---*/
-//const int irPinF = 14;    //pin reserved for Sharp IR input (analog)
-const int irPinR 	= 15;    //front IR sensor  
+const int irPinL   = 14;    //pin reserved for Sharp IR input (analog)
+const int irPinR  	= 15;    //front IR sensor  
 const int pingPinR  = 52;  //pin reserved for ping sensor input (digital)
-const int pingPinF  = 53;
-const int cdsPin 	= 0;     //pin reserved for photoresistor input (analog)
+const int pingPinL  = 53;
+const int cdsPin1 	= 0;     //pin reserved for photoresistor input (analog)
+const int cdsPin2   = 0; 
 
 /*--- servo pins ---*/
 //const int servPin = 8   //pin reserved for servo output (PWM)
@@ -30,8 +32,9 @@ const int r_hPin1 = 3;  //right motor hbridge pins
 const int r_hPin2 = 2;
 
 /*--- global variables ---*/
-int arbiter = 0;		//holds the arbitration decision 
+int mode = 0;		//holds the arbitration decision 
 int speed = 80;       	//speed in PWM format [0 - 255]
+
 
 /*--- intitialize ---*/
 Robot robo;    //start the Robot, with Serial debugging ON
@@ -52,7 +55,6 @@ void setup() {
 	//make sure the robot is stopped
 	robo.stop();
 	robo.setSpeed(speed); //set speed for turning/driving
-	if (DB) Serial.println(headers);
 	delay(2000);	//give some time to put the robot down after reset
  }
 
@@ -67,7 +69,7 @@ void loop(){
     case 2:
       break;
     default:
-      Serial.println("shouldn't be here... Invalid Mode Selection")
+      Serial.println("shouldn't be here... Invalid Mode Selection");
   }
 }
 
@@ -79,8 +81,8 @@ void follower(){
   static int MaxSpeed = RPM*0.7;
   static int MinSpeed = RPM*0.3;
   //get Cds Sensor data
-  int leftSens  = analogRead(CdsPin1);
-  int rightSens = analogRead(CdsPin2);
+  int leftSens  = analogRead(cdsPin1);
+  int rightSens = analogRead(cdsPin2);
   //set differential turning
   //..if at least one sensor is over the threshold
   if (leftSens > threshold || rightSens > threshold){
@@ -95,18 +97,19 @@ void follower(){
     diff = map(diff, -MaxReading, MaxReading, -MaxTurn, MaxTurn); //map to the differential
   }
   //get front sensor data - distance returned as float, cast to int and *1000
-  int leftIR  = robo.IRdistance_i(irPinF);
-  int rightIR = robo.IRdistance_i(irPinR);
+  int leftIR  = robo.IRdistance_mm(irPinL);
+  int rightIR = robo.IRdistance_mm(irPinR);
+  int distance = (leftIR + rightIR)/2;  //dummy value for the time being
   //do some math to figure out where the bot is
     //need to check both, reject anything with too big of a difference
     //we could also use these readings to determine if we are pointed at the bot ahead properly
     //instead of the above section
   //calculate PID for distance with error above
-  correction = PIDcalc(distance);
+  int correction = PIDcalc(distance);
     //too close will give a negative value, we want to add that to the current speed
     //too far will give a positive value, we want to add that to the current speed
     //then we need to set a floor and ceiling for how fast the bot can go
-  speed = speed + error
+  speed = speed + correction;
   speed = max(MinSpeed, speed);
   speed = min(MaxSpeed, speed);
   //determine if we need to speed up or slow down
@@ -115,7 +118,7 @@ void follower(){
   robo.drive_dif(diff);
 }
 
-int PIDcalc(distance){
+int PIDcalc(int distance){
   static int setPoint = 500; //distance to the bot in front in mm
   //setup & tuning variables, 
   //below are for 300 RPM motors at 80/255 speed setting.
