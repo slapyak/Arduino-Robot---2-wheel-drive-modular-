@@ -163,11 +163,15 @@ int centerLine(){
   //update averages
   average_f = robo.IRdistance(irPinLF); // = sum_f/numReadings;
   average_r = robo.IRdistance(irPinLR); // = sum_f/numReadings;
+  if (average_f > 1.6*average_r){       //corner detected (likely)
+    //return -1;
+  }
   //turn according to the average
+  float distance;
   if (average_r != 0 && average_f != 0)
-    float distance = ( average_f + average_r ) * 0.485;
+    distance = ( average_f + average_r ) * 0.485;
   else 
-    float distance = max(average_f, average_r) * 0.970;
+    distance = max(average_f, average_r) * 0.970;
   float error = setPoint - distance;
   float diff = PIDcalculate(error); //negative values mean too far right, turn left
   diff = min(diff, MaxErr); //limits error to max expected value
