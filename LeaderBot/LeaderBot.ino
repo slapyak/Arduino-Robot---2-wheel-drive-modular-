@@ -13,7 +13,8 @@ float PIDcalculate(float distance, int reset=0);
 
 /*--- sensor pins ---*/
 const int irPinLR   = 14;    //pin reserved for Sharp IR input (analog)
-const int irPinLF   = 15;    //front IR sensor  
+const int irPinLF   = 15;    //front angled IR sensor  
+const int irPinR    = 13;    //right side IR sensor  
 const int pingPinR  = 52;  //pin reserved for ping sensor input (digital)
 const int pingPinF  = 53;
 const int cdsPin  = 0;     //pin reserved for photoresistor input (analog)
@@ -99,10 +100,14 @@ void loop(){
  * returns the width in meters
  */
 int findCenter(){
+  //function will turn back and forth until the robot is parallel to the wall
+  //this allows us to start with the robot headed in roughly the right direction.
   static int last_diff;
   //get sensors
-  int front = robo.IRdistance_mm(irPinLF);
-  int rear  = robo.IRdistance_mm(irPinLR);
+  int front = robo.IRdistance_mm(irPinLF); //distance at ~15 degrees forward
+  int rear  = robo.IRdistance_mm(irPinLR); //distance at ~15 degrees backward
+  int rightSide;  //distance to right wall
+  int distance;   //calculated distance to the left wall
   //if we are outside of the acceptible 'parallel' range
   int difference = 100*abs(front - rear)/max(front, rear);  //percentage difference in the two readings
   Serial.print("F "); Serial.print(front); 
@@ -115,26 +120,32 @@ int findCenter(){
     robo.pivot(dir, 90);      //pivot based on reading
   } else {
     Serial.println("AT ZERO");
-    if (last_diff == difference) {
+    if (last_diff == difference) {  //if we're locked in at parallel to the wall
+      distance = front*0.966;       //distance is cos(pi/12) * sensor reading (see calculation)
+      rightSide = robo.IRdistance_mm(irPinR); //get the distance to the right wall (should be perpenducular at this point)
+      setPoint = (distance + rightSide)/20; //convert mm to cm
       return 1;
     }   
   }
-  last_diff = difference;
+  last_diff = difference;   //update reference check
   return 0;
-  //rotate toward shorter until they are within 5% of each other
 }
+
 int centerLine(){
-  const  int   numReadings=5;
-  const  int   MaxErr = 100; //the highest error value expected
-  static float readings_f[numReadings];
-  static float average_f = 0;
-  static float sum_f = 0;
-  static float readings_r[numReadings];
+  //aims for the setpoint defined above - uses primarily the left sensors to judge distance
+  const  int   numReadings=5;     //number of terms used for running average
+  const  int   MaxErr = 100;      //the highest error value expected
+  static float readings_f[numReadings]; //running average array
+  static float average_f = 0;     //running average for front facing sensor
+  static float sum_f = 0;         //sum of last numReadings # front sensor readings
+  static float readings_r[numReadings]; // ditto for rear angled sensor
   static float average_r = 0;
   static float sum_r = 0;
-  static float last_reading = 0;
-  static int   pointer = 0;
-  static int   first_call = 1; //to initialize the static arrays
+  static int   pointer = 0;       //pointer in the array of readings
+  static int   first_call = 1;    //to initialize the static arrays
+  float distance;                 //calculated distance - refer to documentation for explanation of calc
+  float error;                    //calculated error, setpoint-distance
+  float diff;                     //differential drive variable
 
   //initialize the arrays
   if (first_call = 1) {
@@ -145,43 +156,47 @@ int centerLine(){
     first_call = 0;
   }
   //update sum
-  //sum_f -= readings_f[pointer];
-  //sum_r -= readings_r[pointer];
+  sum_f -= readings_f[pointer];
+  sum_r -= readings_r[pointer];
   //get sensor readings
-  //readings_f[pointer] = robo.IRdistance(irPinLF);
-  //readings_r[pointer] = robo.IRdistance(irPinLR);
+  readings_f[pointer] = robo.IRdistance(irPinLF);
+  readings_r[pointer] = robo.IRdistance(irPinLR);
   //update sum
-  //sum_f += readings_f[pointer];
-  //sum_r += readings_r[pointer];
+  sum_f += readings_f[pointer];
+  sum_r += readings_r[pointer];
   //figure out if we found a corner
   //if the left reading jumped, we'll want to turn left
-  //if (readings_f[pointer] > average_f*1.5) //50% greater than the average
-    //return -1;
+  if (readings_f[pointer] > average_f*1.5) //50% greater than the average
+    return -1;
   //if the right reading jumped we'll want to turn right
-  //if (readings_r[pointer] > average_r*1.5) 
-    //return 1;
+  if (readings_r[pointer] > average_r*1.5) 
+    return 1;
   //update averages
-  average_f = robo.IRdistance(irPinLF); // = sum_f/numReadings;
-  average_r = robo.IRdistance(irPinLR); // = sum_f/numReadings;
-  if (average_f > 1.6*average_r){       //corner detected (likely)
-    //return -1;
-  }
-  //turn according to the average
-  float distance;
-  if (average_r != 0 && average_f != 0)
-    distance = ( average_f + average_r ) * 0.485;
+  average_f = sum_f/numReadings;
+  average_r = sum_r/numReadings;
+  //if (readings_f[pointer] > 1.6*readings_r[pointer]){       //corner detected (likely)
+    //diffMax = 75;
+  //} 
+  //turn according to the average  
+  if (readings_f[pointer] != 0 && readings_r[pointer] != 0) //sometimes the readings are screwy - drop a single bad one
+    distance = ( average_f + average_r ) * 0.4829;
   else 
-    distance = max(average_f, average_r) * 0.970;
-  float error = setPoint - distance;
-  float diff = PIDcalculate(error); //negative values mean too far right, turn left
+    distance = max(average_f, average_r) * 0.966;
+  error = setPoint - distance;
+  diff = PIDcalculate(error); //negative values mean too far right, turn left
   diff = min(diff, MaxErr); //limits error to max expected value
   diff = max(diff, -MaxErr);//limits error to min expected value
-  diff = map(error, -MaxErr, MaxErr, -50, 50);
-  robo.drive_dif(-(int)diff,speed);
+  diff = map(error, -MaxErr, MaxErr, -diffMax, diffMax);
+  robo.drive_dif((int)diff,speed);
     //print stuff
   Serial.print("DRIVING: F "); Serial.print(average_f);
   Serial.print(" \tR "); Serial.print(average_r);
   Serial.print(" \tD "); Serial.println(diff);
+
+  //update pointer, loop around when necessary.
+  pointer += 1;
+  if (pointer > numReadings-1)
+    pointer = 0;
   return 0; //all systems normal
 }
 
