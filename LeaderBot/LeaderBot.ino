@@ -124,6 +124,7 @@ int findCenter(){
       distance = front*0.966;       //distance is cos(pi/12) * sensor reading (see calculation)
       rightSide = robo.IRdistance_mm(irPinR); //get the distance to the right wall (should be perpenducular at this point)
       setPoint = (distance + rightSide)/20; //convert mm to cm
+      Serial.print("SETPOINT: "); Serial.println(setPoint);
       return 1;
     }   
   }
@@ -146,31 +147,33 @@ int centerLine(){
   float distance;                 //calculated distance - refer to documentation for explanation of calc
   float error;                    //calculated error, setpoint-distance
   float diff;                     //differential drive variable
+  float ratio;                    //sensor ratio
+  float theta;                    //angle to the parallel travel line
 
   //initialize the arrays
-  if (first_call = 1) {
+  if (first_call == 1) {
     for (int i = 0; i < numReadings; ++i)  {
-      readings_f[i] = 0;
-      readings_r[i] = 0;
+      readings_f[i] = 0.0;
+      readings_r[i] = 0.0;
     }
     first_call = 0;
   }
   //update sum
-  sum_f -= readings_f[pointer];
-  sum_r -= readings_r[pointer];
+  sum_f = sum_f - readings_f[pointer];
+  sum_r = sum_r - readings_r[pointer];
   //get sensor readings
-  readings_f[pointer] = robo.IRdistance(irPinLF);
+  readings_f[pointer] = robo.IRdistance(irPinLF)*0.97; //error correction for sensor
   readings_r[pointer] = robo.IRdistance(irPinLR);
   //update sum
-  sum_f += readings_f[pointer];
-  sum_r += readings_r[pointer];
+  sum_f = sum_f + readings_f[pointer];
+  sum_r = sum_r + readings_r[pointer];
   //figure out if we found a corner
   //if the left reading jumped, we'll want to turn left
-  if (readings_f[pointer] > average_f*1.5) //50% greater than the average
-    return -1;
+  //if (readings_f[pointer] > average_f*1.5) //50% greater than the average
+    //return -1;
   //if the right reading jumped we'll want to turn right
-  if (readings_r[pointer] > average_r*1.5) 
-    return 1;
+  //if (readings_r[pointer] > average_r*1.5) 
+    //return 1;
   //update averages
   average_f = sum_f/numReadings;
   average_r = sum_r/numReadings;
@@ -178,20 +181,28 @@ int centerLine(){
     //diffMax = 75;
   //} 
   //turn according to the average  
-  if (readings_f[pointer] != 0 && readings_r[pointer] != 0) //sometimes the readings are screwy - drop a single bad one
-    distance = ( average_f + average_r ) * 0.4829;
-  else 
+  if (readings_f[pointer] != 0 && readings_r[pointer] != 0) 
+  {//sometimes the readings are screwy - drop a single bad one
+    ratio = abs(average_f-average_r)/(average_f+average_r);
+    theta = atan(ratio);
+    distance = max(average_f, average_r)*cos(theta);
+    if (average_r > average_f)
+      theta = -theta;
+    //distance = ( average_f + average_r ) * 0.4829;
+  } else     
     distance = max(average_f, average_r) * 0.966;
   error = setPoint - distance;
   diff = PIDcalculate(error); //negative values mean too far right, turn left
   diff = min(diff, MaxErr); //limits error to max expected value
   diff = max(diff, -MaxErr);//limits error to min expected value
-  diff = map(error, -MaxErr, MaxErr, -diffMax, diffMax);
+  diff = map(error, -MaxErr, MaxErr, -75, 75);
   robo.drive_dif((int)diff,speed);
     //print stuff
-  Serial.print("DRIVING: F "); Serial.print(average_f);
+  Serial.print(" DRIVING: F "); Serial.print(average_f);
   Serial.print(" \tR "); Serial.print(average_r);
-  Serial.print(" \tD "); Serial.println(diff);
+  Serial.print(" \tAng "); Serial.print(theta);
+  Serial.print(" \tDist "); Serial.print(distance);
+  Serial.print(" \tDiff "); Serial.println(diff);
 
   //update pointer, loop around when necessary.
   pointer += 1;
@@ -246,7 +257,7 @@ void serialCommand(char ch){
 float PIDcalculate(float distance, int reset){
   //setup & tuning variables, 
   //below are for 300 RPM motors at 80/255 speed setting.
-  const float Ku = 8.25;
+  const float Ku = 2.25;
   const float Tu = 3400;
   const float Kp = Ku*0.45;
   const float Ki = Kp*0.5/Tu;
@@ -289,3 +300,67 @@ float PIDcalculate(float distance, int reset){
   //
   return (output);
 }
+
+float atan(float ratio){
+  //atan(ratio) works well for angles from 0-30 degrees, not so well outside of that...
+  //luckily we can control the bot well enough to avoid those situations
+  //at 45 degrees, 5% error is OK, too - we just need to turn at that point.
+  ratio = abs(ratio);
+  const float a = -153;
+  const float b = 220;
+  const float c = -0.04;
+  float value = a*ratio*ratio;
+  value += b*ratio;
+  value += c;
+  value = max(value, 0);    //keep all angles between 0 & 45 degrees
+  value = min(value, 45);
+  return value;
+}
+
+float cos(float theta){
+  //returns cos(theta + pi/12);
+  const float A = -0.00008;
+  const float B = -0.0062;
+  const float C = 0.9712;
+  float value = A*theta*theta;
+  value += B*theta;
+  value += C;
+  value = max(value, 0.0);    //keep all angles between 0 & 45 degrees
+  value = min(value, 45.0);
+  return value;
+}
+
+float atan2(int y,int x){
+  //atan2(y,x) = (y/x) - (1/3)(y/x)^3 + (1/5)(y/x)^5...
+  float factor;
+  float dbx = (float)x;
+  float dby = (float)y;
+  float y_over_x = 0;
+  float result = 0;
+  const int n = 3; //terms to iterate over
+  int evenOdd;
+  //Serial.print("atan2: ");
+  if (y>x){
+    y_over_x = (dbx/dby);
+  } else {
+    y_over_x = (dby/dbx);
+  }
+  //
+  for (int i = 0; i < n; ++i)
+  {
+    factor = (2*i) + 1;
+    evenOdd = pow(-1,i%2);
+    result += evenOdd * pow(y_over_x,factor) * (1/factor); 
+    //Serial.print("\t ");Serial.print(factor);
+    //Serial.print("\t ");Serial.print(evenOdd);
+    //Serial.print("\t ");Serial.println(result);
+  }
+  //Serial.print("\t ");Serial.print(dbx);
+  //Serial.print("\t ");Serial.println(dby);
+  if (y>x){
+    return result;
+  } else {
+    return 1.571-result;
+  }
+ }
+
