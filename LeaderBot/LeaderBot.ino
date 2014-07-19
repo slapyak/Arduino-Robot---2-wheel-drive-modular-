@@ -35,6 +35,8 @@ const int r_hPin2 = 2;
 int speed = 70;       	//speed in PWM format [0 - 255]
 int mode  = 0;
 float setPoint;
+float leftFront;
+float rightFront;
 
 /*--- intitialize ---*/
 Robot robo;    //start the Robot, with Serial debugging ON
@@ -69,7 +71,7 @@ void loop(){
     case 0: //calibrate & initialize
       setPoint = 50;
       //reset the PID
-      PIDcalculate(setPoint);
+      PIDcalculate(setPoint, 1);
       //tell the others to get redy (turn on lights?)
       //have the Robot start
       mode += findCenter();
@@ -83,15 +85,20 @@ void loop(){
       //assume we are turning left
       Serial.println("Turning");
       robo.drive(0, speed*1.1);
-      delay(2750);
+      delay(2500);
       mode += 1;
       break;
     case 21:  //drive straight to find next wall
       Serial.println("Continuing");
       robo.setSpeed(speed);
       robo.drive();
-      delay(500);
-      mode = 1;
+      delay(200);
+      leftFront = robo.IRdistance(irPinLF);
+      rightFront = robo.IRdistance(irPinLR);
+      if (leftFront > 0 && leftFront < 100 && rightFront > 0 && rightFront <100){
+        mode = 1;
+        PIDcalculate(setPoint, 1);
+      }
       break;
     case 22: //rotate until we find the next wall
       //rotate until we are centered again
@@ -128,7 +135,7 @@ int findCenter(){
       robo.stop();
       int leftDist = front * 0.966;
       int rightDist = robo.IRdistance_mm(irPinR);
-      setPoint = (rightDist+leftDist)*0.05;
+      setPoint = 76;//(rightDist+leftDist)*0.05;
       Serial.print("leftDist "); Serial.print(leftDist);
       Serial.print("riteDist "); Serial.print(rightDist);
       Serial.print("setPoint "); Serial.print(setPoint);
@@ -177,7 +184,7 @@ int centerLine(){
   //if (readings_r[pointer] > average_r*1.5) 
     //return 1;
   //update averages
-  average_f = robo.IRdistance(irPinLF)*0.94; // = sum_f/numReadings;
+  average_f = robo.IRdistance(irPinLF)*0.96; // = sum_f/numReadings;
   average_r = robo.IRdistance(irPinLR); // = sum_f/numReadings;
   //turn according to the average
   float distance;
@@ -248,7 +255,7 @@ void serialCommand(char ch){
 float PIDcalculate(float distance, int reset){
   //setup & tuning variables, 
   //below are for 300 RPM motors at 80/255 speed setting.
-  const float Ku = 8.25;
+  const float Ku = 15;  //formerly 8.5
   const float Tu = 3400;
   const float Kp = Ku*0.5;
   const float Ki = Kp*0.5/Tu;
@@ -267,8 +274,10 @@ float PIDcalculate(float distance, int reset){
   float output;
   //Use PID function from Lab #6
   error = (float)(setPoint - distance);
-  if (reset==1)
+  if (reset==1){
     errorSum = 0;
+    lastError = error;
+  }
   else
     errorSum += (error*timeChange);       
   dError = (error - lastError)/timeChange;

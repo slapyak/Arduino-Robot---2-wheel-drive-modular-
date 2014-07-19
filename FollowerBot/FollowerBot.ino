@@ -77,7 +77,7 @@ void follower(){
   int diff = 0; //variable to hold the differential turning 
   static int threshold = 550; //the minimum light level we will consider
   static int MaxTurn = 30;    //the maximum differential we wish to use
-  static int MaxReading = 250;//the maximum delta between light sensor readings expected
+  static int MaxReading = 50;//the maximum delta between light sensor readings expected
   static int MaxSpeed = RPM*0.7;
   static int MinSpeed = 0;
   //get Cds Sensor data
