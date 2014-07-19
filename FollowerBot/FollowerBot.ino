@@ -13,12 +13,12 @@ void serialCommand(char ch);
 int PIDcalc(int distance);
 
 /*--- sensor pins ---*/
-const int irPinL   = 14;    //pin reserved for Sharp IR input (analog)
-const int irPinR  	= 15;    //front IR sensor  
-const int pingPinR  = 52;  //pin reserved for ping sensor input (digital)
-const int pingPinL  = 53;
-const int cdsPin1 	= 0;     //pin reserved for photoresistor input (analog)
-const int cdsPin2   = 0; 
+const int irPinBot   = 0;    //pin reserved for Sharp IR input (analog)
+const int irPinTop   = 1;    //front IR sensor  
+//const int pingPinR  = 52;  //pin reserved for ping sensor input (digital)
+//const int pingPinL  = 53;
+const int cdsPinRt = 7;     //pin reserved for photoresistor input (analog)
+const int cdsPinLt = 8; 
 
 /*--- servo pins ---*/
 //const int servPin = 8   //pin reserved for servo output (PWM)
@@ -33,7 +33,7 @@ const int r_hPin2 = 2;
 
 /*--- global variables ---*/
 int mode = 0;		//holds the arbitration decision 
-int speed = 80;       	//speed in PWM format [0 - 255]
+int speed = 160;       	//speed in PWM format [0 - 255]
 
 
 /*--- intitialize ---*/
@@ -81,8 +81,8 @@ void follower(){
   static int MaxSpeed = RPM*0.7;
   static int MinSpeed = 0;
   //get Cds Sensor data
-  int leftSens  = analogRead(cdsPin1);
-  int rightSens = analogRead(cdsPin2);
+  int leftSens  = analogRead(cdsPinRt);
+  int rightSens = analogRead(cdsPinLt);
   //set differential turning
   //..if at least one sensor is over the threshold
   if (leftSens > threshold || rightSens > threshold){
@@ -97,8 +97,8 @@ void follower(){
     diff = map(diff, -MaxReading, MaxReading, -MaxTurn, MaxTurn); //map to the differential
   }
   //get front sensor data - distance returned as float, cast to int and *1000
-  int leftIR  = robo.IRdistance_mm(irPinL);
-  int rightIR = robo.IRdistance_mm(irPinR);
+  int leftIR  = robo.IRdistance_mm(irPinBot);
+  int rightIR = robo.IRdistance_mm(irPinTop);
   int distance = (leftIR + rightIR)/2;  //dummy value for the time being
   //do some math to figure out where the bot is
     //need to check both, reject anything with too big of a difference
