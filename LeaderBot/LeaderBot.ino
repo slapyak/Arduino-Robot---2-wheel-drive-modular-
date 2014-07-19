@@ -264,7 +264,7 @@ float PIDcalculate(float distance, int reset){
   const float Tu = 3400;
   const float Kp = Ku*0.65;
   const float Ki = Kp*0.4/Tu;
-  const float Kd = Kp*Tu/3.3;
+  const float Kd = Kp*Tu/3.4;
   //terms used each time
   static float lastError = 0;  //the value of the last error - stored between function calls
   static float errorSum = 0;   //sum of all errors - stored between calls
