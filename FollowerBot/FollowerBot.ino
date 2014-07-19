@@ -75,14 +75,14 @@ void loop(){
 
 void follower(){
   int diff = 0; //variable to hold the differential turning 
-  static int threshold = 750; //the minimum light level we will consider
+  static int threshold = 550; //the minimum light level we will consider
   static int MaxTurn = 30;    //the maximum differential we wish to use
   static int MaxReading = 250;//the maximum delta between light sensor readings expected
   static int MaxSpeed = RPM*0.7;
   static int MinSpeed = 0;
   //get Cds Sensor data
-  int leftSens  = analogRead(cdsPinRt);
-  int rightSens = analogRead(cdsPinLt);
+  int leftSens  = analogRead(cdsPinLt);
+  int rightSens = analogRead(cdsPinRt);
   //set differential turning
   //..if at least one sensor is over the threshold
   if (leftSens > threshold || rightSens > threshold){
@@ -106,6 +106,8 @@ void follower(){
     //instead of the above section
   //calculate PID for distance with error above
   int correction = PIDcalc(distance);
+  Serial.print("distance: "); Serial.println(distance);
+  Serial.print("speed correction: "); Serial.println(correction);
     //too close will give a negative value, we want to add that to the current speed
     //too far will give a positive value, we want to add that to the current speed
     //then we need to set a floor and ceiling for how fast the bot can go
@@ -124,9 +126,9 @@ int PIDcalc(int distance){
   //below are for 300 RPM motors at 80/255 speed setting.
   const float Ku = 8.25;
   const float Tu = 3400;
-  const float Kp = Ku*0.45;
-  const float Ki = Kp*2/Tu;
-  const float Kd = Kp*Tu/3;
+  const float Kp = Ku;// *0.45;
+  const float Ki = 0; // Kp*2/Tu;
+  const float Kd = 0; // Kp*Tu/3;
   //terms used each time
   static float lastError = 0;  //the value of the last error - stored between function calls
   static float errorSum = 0;   //sum of all errors - stored between calls
@@ -140,7 +142,7 @@ int PIDcalc(int distance){
   float Dterm;                 //derivative term
   int output;
   //Use PID function from Lab #6
-  error = (float)(setPoint - distance);
+  error = (float)(distance - setPoint);
   errorSum += (error*timeChange);       
   dError = (error - lastError)/timeChange;
   Pterm = (Kp*error);
