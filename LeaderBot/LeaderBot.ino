@@ -69,23 +69,28 @@ void loop(){
       robo.stop();
       break;
     case 0: //calibrate & initialize
-      setPoint = 50;
+      setPoint = 77;
       //reset the PID
-      PIDcalculate(setPoint, 1);
+      //PIDcalculate(setPoint, 1);
       //tell the others to get redy (turn on lights?)
-      //have the Robot start
-      mode += findCenter();
+      //have the Robot start      
+        robo.setSpeed(150);
+        robo.drive();         //xx//robo.drive(speed);
+        delay(350);
+        speed = 55;
+        robo.setSpeed(speed);
+      mode += 1;//findCenter();
       break;
     case 1: //go straight
       status = centerLine();
       if (status != 0)
         mode = 20;
       break;
-    case 20: // corner approaching
+    case 20: // corner 
       //assume we are turning left
       Serial.println("Turning");
-      robo.drive(0, speed*1.1);
-      delay(2500);
+      robo.drive(30, 85);          //xx//robo.drive(0, speed)
+      delay(2750);                //xx//delay(2500);
       mode += 1;
       break;
     case 21:  //drive straight to find next wall
@@ -255,11 +260,11 @@ void serialCommand(char ch){
 float PIDcalculate(float distance, int reset){
   //setup & tuning variables, 
   //below are for 300 RPM motors at 80/255 speed setting.
-  const float Ku = 15;  //formerly 8.5
+  const float Ku = 45;  //formerly 8.5
   const float Tu = 3400;
-  const float Kp = Ku*0.5;
-  const float Ki = Kp*0.5/Tu;
-  const float Kd = Kp*Tu/3;
+  const float Kp = Ku*0.65;
+  const float Ki = Kp*0.4/Tu;
+  const float Kd = Kp*Tu/3.3;
   //terms used each time
   static float lastError = 0;  //the value of the last error - stored between function calls
   static float errorSum = 0;   //sum of all errors - stored between calls
