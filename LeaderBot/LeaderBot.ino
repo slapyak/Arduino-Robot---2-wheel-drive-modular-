@@ -309,7 +309,7 @@ float PIDcalculate(float distance, int reset){
 
 int centerLine2(){
   const float WIDTH = 144.0;
-  const float Kp = 2.0;
+  const float Kp = 4.0;
   float front;
   float rear;
   float right;  
@@ -335,7 +335,7 @@ int centerLine2(){
     bearing = atan2(400.0, offset);  //angle from current position to a point xx cm ahead on the centerline
     //distance = max(front , rear)*cos(heading);
     correction = heading - bearing;   //figure which way and how much we are off by angle
-    correction = Kp * correction;     //proportional gain 
+    correction = -Kp * correction;     //proportional gain 
     robo.drive_dif( (int)correction );//drive the robot!
     //print stuff
     Serial.print("DRIVING: F "); Serial.print(front);

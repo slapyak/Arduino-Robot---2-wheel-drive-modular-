@@ -13,8 +13,9 @@ void serialCommand(char ch);
 int PIDcalc(int distance);
 
 /*--- sensor pins ---*/
-const int irPinBot   = 0;    //pin reserved for Sharp IR input (analog)
-const int irPinTop   = 1;    //front IR sensor  
+//const int irPinBot   = 0;    //pin reserved for Sharp IR input (analog)
+const int irTopPin   = 0;    //front IR sensor  
+const int irBottomPin = 1;
 //const int pingPinR  = 52;  //pin reserved for ping sensor input (digital)
 //const int pingPinL  = 53;
 const int cdsPinRt = 7;     //pin reserved for photoresistor input (analog)
@@ -24,38 +25,46 @@ const int cdsPinLt = 8;
 //const int servPin = 8   //pin reserved for servo output (PWM)
 
 /*--- motor pins ---*/
-const int l_EnPin = 7;  //left motor enable pin
-const int l_hPin1 = 5;  //left motor hbridge pins
-const int l_hPin2 = 4;
-const int r_EnPin = 6;  //right motor enable pin (for PWM speed ctrl)
-const int r_hPin1 = 3;  //right motor hbridge pins
-const int r_hPin2 = 2;
+const int l_EnPin = 2;  //left motor enable pin
+const int l_hPin1 = 10;  //left motor hbridge pins
+const int l_hPin2 = 9;
+const int r_EnPin = 3;  //right motor enable pin (for PWM speed ctrl)
+const int r_hPin1 = 5;  //right motor hbridge pins
+const int r_hPin2 = 6;
 
 /*--- global variables ---*/
-int mode = 0;		//holds the arbitration decision 
-int speed = 160;       	//speed in PWM format [0 - 255]
+int mode = 1;		//holds the arbitration decision 
+int speed = 180;       	//speed in PWM format [0 - 255]
+//const int FILTER_SIZE = 10;
+//static float irFilterLeft[FILTER_SIZE];
+//static float irFilterRight[FILTER_SIZE];
 
 
 /*--- intitialize ---*/
 Robot robo;    //start the Robot, with Serial debugging ON
                   //refer to Robot class definition for capabilities and code
 
+const long referenceMv = 5000;
+
 /* --------------------------------------------------------------------
  * -----------                   SETUP                     ------------
  * -------------------------------------------------------------------- */
 void setup() {
+  
 	//open serial connection
 	Serial.begin(9600);
 	//set the Robot class up with the pin info for each motor
 	robo.setLeft(l_EnPin, l_hPin1, l_hPin2);
 	robo.setRight(r_EnPin, r_hPin1, r_hPin2);
-	Serial.println("- - - Follower Robot - - -");
+	if (DB) {Serial.println("- - - Follower Robot - - -");
   	Serial.println("   Enter 0 for Follower Robot");
-	Serial.println("   Enter s,S to stop all movement");  
+	  Serial.println("   Enter s,S to stop all movement");  
+  }
 	//make sure the robot is stopped
 	robo.stop();
 	robo.setSpeed(speed); //set speed for turning/driving
 	delay(2000);	//give some time to put the robot down after reset
+
  }
 
 void loop(){
@@ -69,62 +78,92 @@ void loop(){
     case 2:
       break;
     default:
-      Serial.println("shouldn't be here... Invalid Mode Selection");
+      mode = 3;//Serial.println("shouldn't be here... Invalid Mode Selection");
   }
 }
 
+
 void follower(){
-  int diff = 0; //variable to hold the differential turning 
-  static int threshold = 550; //the minimum light level we will consider
-  static int MaxTurn = 30;    //the maximum differential we wish to use
-  static int MaxReading = 50;//the maximum delta between light sensor readings expected
-  static int MaxSpeed = RPM*0.7;
-  static int MinSpeed = 0;
-  //get Cds Sensor data
-  int leftSens  = analogRead(cdsPinLt);
-  int rightSens = analogRead(cdsPinRt);
-  //set differential turning
-  //..if at least one sensor is over the threshold
-  if (leftSens > threshold || rightSens > threshold){
-    //we know we found the bot in front,
-    //so turn toward it, 
-    //the higher reading indicates the direction the bot ahead is in
-    //the difference in the two sensors is a rough indication of how far in that direction
-    //negative differentials will turn left, positive to the right
-    diff = rightSens - leftSens;  //find the difference
-    diff = max(-MaxReading, diff);  //set a floor for the sensor differnce
-    diff = min(MaxReading, diff);   //set a ceiling
-    diff = map(diff, -MaxReading, MaxReading, -MaxTurn, MaxTurn); //map to the differential
+  int diff = 0; //variable to hold the differential turning
+  float irRatio = 0;
+  static int threshold = 700; //the minimum light level we will consider
+  static int MaxTurn = 100;    //the maximum differential we wish to use
+  static int MaxReading = 100;//the maximum delta between light sensor readings expected
+  static int MaxSpeed = 90;
+  static int MinSpeed = 35;
+  
+  float irTopDist  = robo.IRdistance_mm(irTopPin);    //getIrDist(irTopPin);
+  float irBottomDist = robo.IRdistance_mm(irBottomPin);       //getIrDist(irBottomPin);
+  
+  
+  if(irTopDist > 1000){
+    irTopDist = 1000;
   }
-  //get front sensor data - distance returned as float, cast to int and *1000
-  int leftIR  = robo.IRdistance_mm(irPinBot);
-  int rightIR = robo.IRdistance_mm(irPinTop);
-  int distance = (leftIR + rightIR)/2;  //dummy value for the time being
-  //do some math to figure out where the bot is
-    //need to check both, reject anything with too big of a difference
-    //we could also use these readings to determine if we are pointed at the bot ahead properly
-    //instead of the above section
-  //calculate PID for distance with error above
-  int correction = PIDcalc(distance);
-  Serial.print("distance: "); Serial.println(distance);
-  Serial.print("speed correction: "); Serial.println(correction);
-    //too close will give a negative value, we want to add that to the current speed
-    //too far will give a positive value, we want to add that to the current speed
-    //then we need to set a floor and ceiling for how fast the bot can go
-  speed = speed + correction;
-  speed = max(MinSpeed, speed);
-  speed = min(MaxSpeed, speed);
-  //determine if we need to speed up or slow down
-  //have the bot drive in the direction and speed necessary
+  
+  if(irBottomDist > 1000){
+   irBottomDist = 1000; 
+  }
+  
+  float irDelta = abs(irTopDist - irBottomDist);
+  if(irTopDist < irBottomDist){
+    diff = (int)(irDelta * -.3);
+  } else {
+    diff = (int)(irDelta * .3);
+  }
+  
+  if (DB){
+  Serial.print("IR TOP: ");
+  Serial.print(irTopDist);
+  Serial.print(" \tIR BOT: ");
+  Serial.print(irBottomDist);
+  Serial.print(" \tDif: ");
+  Serial.print(diff);
+  }
+  
+  float irMax = max(irTopDist, irBottomDist);
+  float irMin = min(irTopDist, irBottomDist);
+  
+  if(irMax == 0){
+    irMax = 1; 
+  }
+  
+  irRatio = irMin / irMax;
+  
+  float distance;
+  
+  if(irRatio < 0.5){
+    distance = irMin;
+    diff = diff * 3;
+    //speed = 75;
+  } else {
+    distance = (irTopDist + irBottomDist)/2;
+  } 
+  
+  int correction = PIDcalc(distance);    
+  if(distance < 200){
+      speed = MinSpeed;
+  } else {
+    speed = speed + correction;
+    speed = max(MinSpeed, speed);
+    speed = min(MaxSpeed, speed);
+   }
+
+  diff = map(diff, -250, 250, -100, 100);
+  diff = min(diff, 100);
+  diff = max(diff,-100);
+  Serial.print(" \tDI-2: ");
+  Serial.print(diff);
+  Serial.print(" \tSpeed: ");
+  Serial.println(speed);
   robo.setSpeed(speed);
-  robo.drive_dif(diff);
+  robo.drive_dif(diff, -1, 65);
 }
 
 int PIDcalc(int distance){
-  static int setPoint = 500; //distance to the bot in front in mm
+  static int setPoint = 300; //distance to the bot in front in mm
   //setup & tuning variables, 
   //below are for 300 RPM motors at 80/255 speed setting.
-  const float Ku = 8.25;
+  const float Ku = 0.8;
   const float Tu = 3400;
   const float Kp = Ku;// *0.45;
   const float Ki = 0; // Kp*2/Tu;
@@ -201,3 +240,14 @@ void serialCommand(char ch){
     Serial.println(" : unrecognized command");
   }
  }
+ 
+float getIrDist(int pin){
+  
+  static float numerator = 177855.0;
+  int val = analogRead(pin);
+  int mV = (val * referenceMv) / 1023;
+  
+  float denominator = pow(mV, 1.275998);
+  float dist = (numerator / denominator);
+  return dist * 10; 
+}
