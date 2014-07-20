@@ -192,6 +192,14 @@ int centerLine(){
   average_f = robo.IRdistance(irPinLF)*0.96; // = sum_f/numReadings;
   average_r = robo.IRdistance(irPinLR); // = sum_f/numReadings;
   //turn according to the average
+  {//sometimes the readings are screwy - drop a single bad one
+    ratio = abs(average_f-average_r)/(average_f+average_r);
+    theta = atan(ratio);
+    distance = max(average_f, average_r)*cos(theta);
+    if (average_r > average_f)
+      theta = -theta;
+    //distance = ( average_f + average_r ) * 0.4829;
+  } else     
   float distance;
   if (average_r != 0 && average_f != 0)
     distance = ( average_f + average_r ) * 0.485;
@@ -305,6 +313,69 @@ float PIDcalculate(float distance, int reset){
   //
   return (output);
 }
+float atan(float ratio){
+  //atan(ratio) works well for angles from 0-30 degrees, not so well outside of that...
+  //luckily we can control the bot well enough to avoid those situations
+  //at 45 degrees, 5% error is OK, too - we just need to turn at that point.
+  ratio = abs(ratio);
+  const float a = -153;
+  const float b = 220;
+  const float c = -0.04;
+  float value = a*ratio*ratio;
+  value += b*ratio;
+  value += c;
+  value = max(value, 0);    //keep all angles between 0 & 45 degrees
+  value = min(value, 45);
+  return value;
+}
+
+float cos(float theta){
+  //returns cos(theta + pi/12);
+  const float A = -0.00008;
+  const float B = -0.0062;
+  const float C = 0.9712;
+  float value = A*theta*theta;
+  value += B*theta;
+  value += C;
+  value = max(value, 0.0);    //keep all angles between 0 & 45 degrees
+  value = min(value, 45.0);
+  return value;
+}
+
+float atan2(int y,int x){
+  //atan2(y,x) = (y/x) - (1/3)(y/x)^3 + (1/5)(y/x)^5...
+  float factor;
+  float dbx = (float)x;
+  float dby = (float)y;
+  float y_over_x = 0;
+  float result = 0;
+  const int n = 3; //terms to iterate over
+  int evenOdd;
+  //Serial.print("atan2: ");
+  if (y>x){
+    y_over_x = (dbx/dby);
+  } else {
+    y_over_x = (dby/dbx);
+  }
+  //
+  for (int i = 0; i < n; ++i)
+  {
+    factor = (2*i) + 1;
+    evenOdd = pow(-1,i%2);
+    result += evenOdd * pow(y_over_x,factor) * (1/factor); 
+    //Serial.print("\t ");Serial.print(factor);
+    //Serial.print("\t ");Serial.print(evenOdd);
+    //Serial.print("\t ");Serial.println(result);
+  }
+  //Serial.print("\t ");Serial.print(dbx);
+  //Serial.print("\t ");Serial.println(dby);
+  if (y>x){
+    return result;
+  } else {
+    return 1.571-result;
+  }
+ }
+
 
 int centerLine2(){
   const  float Kp = 2;
