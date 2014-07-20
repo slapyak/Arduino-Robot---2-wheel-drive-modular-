@@ -311,6 +311,7 @@ int centerLine2(){
   const float WIDTH = 144.0;
   const float Kp = 2.0;
   float front;
+  float rear;
   float right;  
   float left;
   float position;
@@ -331,15 +332,15 @@ int centerLine2(){
     center = (left + right)/2;        //the center point in the hallway
     offset = (position - center) * WIDTH; //absolute position on y axis
     heading = theta(front, rear);     //angle relative to the centerline
-    bearing = atan2(400, offset);  //angle from current position to a point xx cm ahead on the centerline
+    bearing = atan2(400.0, offset);  //angle from current position to a point xx cm ahead on the centerline
     //distance = max(front , rear)*cos(heading);
     correction = heading - bearing;   //figure which way and how much we are off by angle
     correction = Kp * correction;     //proportional gain 
     robo.drive_dif( (int)correction );//drive the robot!
     //print stuff
-    Serial.print("DRIVING: F "); Serial.print(average_f);
-    Serial.print(" \tR "); Serial.print(average_r);
-    Serial.print(" \tD "); Serial.println(diff);
+    Serial.print("DRIVING: F "); Serial.print(front);
+    Serial.print(" \tR "); Serial.print(rear);
+    Serial.print(" \tD "); Serial.println(correction);
     return 0; //all systems normal, keep on trucking 
   } 
   else if (front == 0) {              //corner detected
@@ -350,7 +351,7 @@ int centerLine2(){
 
 float theta(float front, float rear){
   float theta;
-  ratio = abs(front - rear)/(front + rear);
+  float ratio = abs(front - rear)/(front + rear);
   //arctangent calculation for phi = +- 15 degrees
   //atan(ratio) works well for angles from 0-30 degrees, not so well outside of that...
   //luckily we can control the bot well enough to avoid those situations
