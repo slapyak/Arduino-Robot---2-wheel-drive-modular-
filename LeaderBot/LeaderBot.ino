@@ -191,15 +191,7 @@ int centerLine(){
   //update averages
   average_f = robo.IRdistance(irPinLF)*0.96; // = sum_f/numReadings;
   average_r = robo.IRdistance(irPinLR); // = sum_f/numReadings;
-  //turn according to the average
-  {//sometimes the readings are screwy - drop a single bad one
-    ratio = abs(average_f-average_r)/(average_f+average_r);
-    theta = atan(ratio);
-    distance = max(average_f, average_r)*cos(theta);
-    if (average_r > average_f)
-      theta = -theta;
-    //distance = ( average_f + average_r ) * 0.4829;
-  } else     
+  //turn according to the average    
   float distance;
   if (average_r != 0 && average_f != 0)
     distance = ( average_f + average_r ) * 0.485;
@@ -313,21 +305,6 @@ float PIDcalculate(float distance, int reset){
   //
   return (output);
 }
-float atan(float ratio){
-  //atan(ratio) works well for angles from 0-30 degrees, not so well outside of that...
-  //luckily we can control the bot well enough to avoid those situations
-  //at 45 degrees, 5% error is OK, too - we just need to turn at that point.
-  ratio = abs(ratio);
-  const float a = -153;
-  const float b = 220;
-  const float c = -0.04;
-  float value = a*ratio*ratio;
-  value += b*ratio;
-  value += c;
-  value = max(value, 0);    //keep all angles between 0 & 45 degrees
-  value = min(value, 45);
-  return value;
-}
 
 float cos(float theta){
   //returns cos(theta + pi/12);
@@ -340,6 +317,68 @@ float cos(float theta){
   value = max(value, 0.0);    //keep all angles between 0 & 45 degrees
   value = min(value, 45.0);
   return value;
+}
+
+int centerLine2(){
+  const float WIDTH = 144.0;
+  const float Kp = 2.0;
+  float front = 0.0;
+  float right = 0.0;  
+  float left;
+  float position;
+  float heading;
+  float bearing;
+
+  //get front and rear facing (left side) readings
+  front = robo.IRdistance(irPinLF)*0.96; // = sum_f/numReadings;
+  rear  = robo.IRdistance(irPinLR); // = sum_f/numReadings;
+  right = robo.IRdistance(irPinR);  //distance to the right wall
+
+  if (front != 0 && rear != 0) {
+    left = (front + rear) * 0.485;    //distance to the wall at left on angle
+    position = left / (left + right); //relative position in the hallway, expressed as a fraction from 0 to 1
+    center = (left + right)/2;        //the center point in the hallway
+    offset = (position - center) * WIDTH; //absolute position on y axis
+    heading = theta(front, rear);     //angle relative to the centerline
+    bearing = atan2(300, position - center);  //angle from current position to a point 3 meters ahead on the centerline
+    //distance = max(front , rear)*cos(theta);
+    correction = heading - bearing;   //figure which way and how much we are off by angle
+    correction = Kp * correction;     //proportional gain 
+    robo.drive_dif( (int)correction );//drive the robot!
+    //print stuff
+    Serial.print("DRIVING: F "); Serial.print(average_f);
+    Serial.print(" \tR "); Serial.print(average_r);
+    Serial.print(" \tD "); Serial.println(diff);
+    return 0; //all systems normal 
+  } 
+  else if (front == 0) {              //corner detected
+    //if (right == 0 || right > 180)  //open T intersection detected
+    return 1;                         //flag the main loop
+  }
+}
+
+float theta(float front, float rear){
+  float theta;
+  ratio = abs(front - rear)/(front + rear);
+  //arctangent calculation for phi = +- 15 degrees
+  //atan(ratio) works well for angles from 0-30 degrees, not so well outside of that...
+  //luckily we can control the bot well enough to avoid those situations
+  //at 45 degrees, 5% error is OK, too - we just need to turn at that point.
+  ratio = abs(ratio);
+  const float a = -153;
+  const float b = 220;
+  const float c = -0.04;
+  theta = a*ratio*ratio;
+  theta += b*ratio;
+  theta += c;
+  theta = max(theta, 0);    //keep all angles between 0 & 35 degrees
+  theta = min(theta, 35);
+  //end of arctangent calculation
+
+  if (rear > front)
+    theta = -theta;
+  theta = theta * 0.017453; //degrees to radians
+  return theta;
 }
 
 float atan2(int y,int x){
@@ -375,42 +414,3 @@ float atan2(int y,int x){
     return 1.571-result;
   }
  }
-
-
-int centerLine2(){
-  const  float Kp = 2;
-  static float front = 0;
-  static float right = 0;  
-  float left;
-  float position;
-  float heading;
-  float bearing;
-
-  front = robo.IRdistance(irPinLF)*0.96; // = sum_f/numReadings;
-  rear = robo.IRdistance(irPinLR); // = sum_f/numReadings;
-
-  if (front != 0 && rear != 0) {
-    left = (front + rear) * 0.485;    //distance to the wall at left on angle
-    right = robo.IRdistance(irPinR);  //distance to the right wall
-    position = left / (left + right); //relative position in the hallway, expressed as a fraction from 0 to 1
-    center = (left + right)/2;        //the center point in the hallway
-    heading = theta(front, rear);     //angle relative to the centerline
-    bearing = atan2(300, position - center);  //angle from current position to a point 3 meters ahead on the centerline
-
-    correction = heading - bearing;   //figure which way and how much we are off by angle
-    correction = Kp * correction;     //proportional gain 
-    robo.drive_dif( (int)correction );//drive the robot!
-    //print stuff
-    Serial.print("DRIVING: F "); Serial.print(average_f);
-    Serial.print(" \tR "); Serial.print(average_r);
-    Serial.print(" \tD "); Serial.println(diff);
-    return 0; //all systems normal 
-  } 
-  else if (front == 0) {              //corner detected
-    return 1;                         //flag the main loop
-  }
-}
-
-float theta(front, rear){
-  
-}
