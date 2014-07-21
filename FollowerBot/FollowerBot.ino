@@ -1,6 +1,7 @@
 /* *******************************************************************************
 * Refer to contributors.txt for authorship information
 * ECE 450 - Semester Project Follower Robot
+* THE MUFFIN MAN
 * ***************************************************************************** */
 #include <Robot.h>
 #define LOG 0 
@@ -89,10 +90,11 @@ void follower(){
   static int threshold = 700; //the minimum light level we will consider
   static int MaxTurn = 100;    //the maximum differential we wish to use
   static int MaxReading = 100;//the maximum delta between light sensor readings expected
-  static int MaxSpeed = 90;
-  static int MinSpeed = 35;
+  static int MaxSpeed = 68;
+  static int MinSpeed = 58;
+  static int stopped = 1;
   
-  float irTopDist  = robo.IRdistance_mm(irTopPin);    //getIrDist(irTopPin);
+  float irTopDist  = robo.IRdistance_mm(irTopPin)*0.955;    //getIrDist(irTopPin);
   float irBottomDist = robo.IRdistance_mm(irBottomPin);       //getIrDist(irBottomPin);
   
   
@@ -106,9 +108,9 @@ void follower(){
   
   float irDelta = abs(irTopDist - irBottomDist);
   if(irTopDist < irBottomDist){
-    diff = (int)(irDelta * -.3);
+    diff = (int)(irDelta * -.5);
   } else {
-    diff = (int)(irDelta * .3);
+    diff = (int)(irDelta * .5);
   }
   
   if (DB){
@@ -133,7 +135,7 @@ void follower(){
   
   if(irRatio < 0.5){
     distance = irMin;
-    diff = diff * 3;
+    diff = diff * 18;
     //speed = 75;
   } else {
     distance = (irTopDist + irBottomDist)/2;
@@ -149,25 +151,37 @@ void follower(){
    }
 
   diff = map(diff, -250, 250, -100, 100);
-  diff = min(diff, 100);
-  diff = max(diff,-100);
+  diff = min(diff, 40);
+  diff = max(diff,-80);
   Serial.print(" \tDI-2: ");
   Serial.print(diff);
   Serial.print(" \tSpeed: ");
   Serial.println(speed);
+  //if we are stopped and need to 'jumpstart' the wheels
+  /*if (stopped == 1 && speed < -70){
+    robo.setSpeed(100);
+    robo.driveForward();
+    delay(150);
+    stopped = 0;
+  }*/
   robo.setSpeed(speed);
-  robo.drive_dif(diff, -1, 65);
+  robo.drive_dif(diff, -1, 60);
+
+  if (distance < 20.0){
+    Serial.println("RAWR");
+    stopped = 1;
+  }
 }
 
 int PIDcalc(int distance){
   static int setPoint = 300; //distance to the bot in front in mm
   //setup & tuning variables, 
   //below are for 300 RPM motors at 80/255 speed setting.
-  const float Ku = 0.8;
+  const float Ku = 0.5;
   const float Tu = 3400;
   const float Kp = Ku;// *0.45;
   const float Ki = 0; // Kp*2/Tu;
-  const float Kd = 0; // Kp*Tu/3;
+  const float Kd = 0.5; // Kp*Tu/3;
   //terms used each time
   static float lastError = 0;  //the value of the last error - stored between function calls
   static float errorSum = 0;   //sum of all errors - stored between calls
